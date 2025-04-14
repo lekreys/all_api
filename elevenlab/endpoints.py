@@ -8,11 +8,9 @@ import requests
 app = FastAPI()
 
 
-@app.websocket("/ws")
-async def websocket_proxy(websocket: WebSocket ):
-
-    TARGET_WS_URL = "wss://api.elevenlabs.io/v1/convai/conversation?agent_id=CCd3IDviRNuN5Hss9s3G"
-   
+@app.websocket("/ws/{agent_id}")
+async def websocket_proxy(websocket: WebSocket, agent_id: str):
+    TARGET_WS_URL = f"wss://api.elevenlabs.io/v1/convai/conversation?agent_id={agent_id}"
 
     await websocket.accept()
     try:
