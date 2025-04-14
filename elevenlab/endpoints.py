@@ -1,19 +1,18 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect , HTTPException , Query
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect , HTTPException , Header
 import asyncio
 import websockets
-from elevenlab.schema import CreateAgentRequest
+from schema import CreateAgentRequest
 import requests
-import os
 
 
-apikey = os.getenv("ELEVEN_LABS_API_KEY")
+app = FastAPI()
 
-router = APIRouter()
 
-@router.websocket("/ws")
-async def websocket_proxy(websocket: WebSocket):
+@app.websocket("/ws")
+async def websocket_proxy(websocket: WebSocket ):
 
     TARGET_WS_URL = "wss://api.elevenlabs.io/v1/convai/conversation?agent_id=CCd3IDviRNuN5Hss9s3G"
+   
 
     await websocket.accept()
     try:
@@ -40,8 +39,8 @@ async def websocket_proxy(websocket: WebSocket):
 
 
 
-@router.post("/create_agent")
-def create_agent(request: CreateAgentRequest):
+@app.post("/create_agent")
+def create_agent(request: CreateAgentRequest , apikey: str = Header(...)):
 
     TARGET_URL = "https://api.elevenlabs.io/v1/convai/agents/create"
 
@@ -58,14 +57,15 @@ def create_agent(request: CreateAgentRequest):
     return response.json()
 
 
-@router.get("/agents-list")
-def get_agents():
 
+@app.get("/agents-list")
+def get_agents(apikey: str = Header(...)):
     TARGET_URL = "https://api.elevenlabs.io/v1/convai/agents"
-
+    
+    # Gunakan nilai apikey dari header
     headers = {
         "Content-Type": "application/json",
-        'xi-api-key'  : apikey
+        "xi-api-key": apikey
     }
     
     response = requests.get(TARGET_URL, headers=headers)
@@ -75,8 +75,11 @@ def get_agents():
     
     return response.json()
 
-@router.get("/detail-agent")
-def get_detail_agent(agent_id: str = Query()):
+
+
+
+@app.get("/detail-agent/{agent_id}")
+def get_detail_agent(agent_id : str , apikey: str = Header(...)):
 
     TARGET_URL = f"https://api.elevenlabs.io/v1/convai/agents/{agent_id}"
 
@@ -96,8 +99,8 @@ def get_detail_agent(agent_id: str = Query()):
 
 
 
-@router.get("/conversation-list")
-def get_conversation():
+@app.get("/conversation-list")
+def get_conversation(apikey: str = Header(...)):
 
     TARGET_URL = "https://api.elevenlabs.io/v1/convai/conversations"
 
@@ -115,9 +118,8 @@ def get_conversation():
 
 
 
-
-@router.get("/detail-conversation")
-def get_detail_conversation(conversation_id: str = Query()):
+@app.get("/detail-conversation/{conversation_id}")
+def get_detail_conversation(conversation_id: str , apikey: str = Header(...)):
 
     TARGET_URL = f"https://api.elevenlabs.io/v1/convai/conversations/{conversation_id}"
 
@@ -132,3 +134,23 @@ def get_detail_conversation(conversation_id: str = Query()):
         raise HTTPException(status_code=response.status_code, detail=response.text)
     
     return response.json()
+
+
+
+
+
+
+@app.delete("/agent/{agent_id}")
+def delete_agent(agent_id: str , apikey: str = Header(...)):
+    url = f"https://api.elevenlabs.io/v1/convai/agents/{agent_id}"
+    headers = {
+        'xi-api-key'  : apikey,
+        "Content-Type": "application/json"
+    }
+    
+    response = requests.delete(url, headers=headers)
+    
+    if response.status_code != 200:
+        raise HTTPException(status_code=response.status_code, detail=response.text)
+    
+    return {"message": "Agent deleted successfully"}
