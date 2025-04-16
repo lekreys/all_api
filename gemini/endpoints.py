@@ -3,9 +3,13 @@ import json
 import os
 import base64
 from dotenv import load_dotenv
-from fastapi import WebSocket, WebSocketDisconnect , APIRouter
+from fastapi import WebSocket, WebSocketDisconnect , APIRouter , File, UploadFile, Form, HTTPException , Header
 from google import genai
-
+from google.genai import types
+from fastapi.responses import JSONResponse
+import io
+from pydantic import BaseModel
+from typing import List, Optional
 
 load_dotenv() 
 
@@ -87,3 +91,80 @@ async def gemini_websocket_endpoint(websocket: WebSocket):
     finally:
         await websocket.close()
         print("Gemini session closed.")
+
+
+
+
+
+
+
+@router.post("/generate-image/")
+async def generate_image(file: UploadFile = File(...), prompt: str = Form(...) ,  x_api_key: str = Header(...)):
+
+    try:
+        client = genai.Client(api_key=x_api_key)
+
+        input_image_bytes = await file.read()
+        
+        with open("temp_input.jpeg", "wb") as f:
+            f.write(input_image_bytes)
+
+        uploaded_file = client.files.upload(file="temp_input.jpeg")
+
+        contents = [
+            types.Content(
+                role="user",
+                parts=[
+                    types.Part.from_uri(
+                        file_uri=uploaded_file.uri,
+                        mime_type=uploaded_file.mime_type,
+                    ),
+                    types.Part.from_text(text=prompt),
+                ],
+            )
+        ]
+
+        generate_content_config = types.GenerateContentConfig(
+            temperature=1,
+            top_p=0.95,
+            top_k=40,
+            max_output_tokens=8192,
+            response_modalities=["image", "text"],
+            safety_settings=[
+                types.SafetySetting(
+                    category="HARM_CATEGORY_CIVIC_INTEGRITY",
+                    threshold="OFF",
+                ),
+            ],
+            response_mime_type="text/plain",
+        )
+
+        generated_image_bytes = None
+
+        for chunk in client.models.generate_content_stream(
+            model="gemini-2.0-flash-exp-image-generation",
+            contents=contents,
+            config=generate_content_config,
+        ):
+            if not chunk.candidates or not chunk.candidates[0].content or not chunk.candidates[0].content.parts:
+                continue
+            
+            if chunk.candidates[0].content.parts[0].inline_data:
+                generated_image_bytes = chunk.candidates[0].content.parts[0].inline_data.data
+                break
+
+        os.remove("temp_input.jpeg")
+
+        if not generated_image_bytes:
+            raise HTTPException(status_code=500, detail="Failed to generate image")
+
+        image_base64 = base64.b64encode(generated_image_bytes).decode('utf-8')
+
+        return {
+            'image_base64': image_base64
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Image generation failed: {str(e)}")
+
+
